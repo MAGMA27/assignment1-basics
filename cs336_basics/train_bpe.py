@@ -1,0 +1,248 @@
+import os
+from typing import BinaryIO
+import regex as re
+import multiprocessing
+import json
+
+def find_chunk_boundaries(
+    file: BinaryIO,
+    desired_num_chunks: int,
+    split_special_token: bytes,
+) -> list[int]:
+    """
+    Chunk the file into parts that can be counted independently.
+    May return fewer chunks if the boundaries end up overlapping.
+    """
+    assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
+
+    # Get total file size in bytes
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+
+    chunk_size = file_size // desired_num_chunks
+
+    # Initial guesses for chunk boundary locations, uniformly spaced
+    # Chunks start on previous index, don't include last index
+    chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
+    chunk_boundaries[-1] = file_size
+
+    mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
+
+    for bi in range(1, len(chunk_boundaries) - 1):
+        initial_position = chunk_boundaries[bi]
+        file.seek(initial_position)  # Start at boundary guess
+        while True:
+            mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
+
+            # If EOF, this boundary should be at the end of the file
+            if mini_chunk == b"":
+                chunk_boundaries[bi] = file_size
+                break
+
+            # Find the special token in the mini chunk
+            found_at = mini_chunk.find(split_special_token)
+            if found_at != -1:
+                chunk_boundaries[bi] = initial_position + found_at
+                break
+            initial_position += mini_chunk_size
+
+    # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
+    return sorted(set(chunk_boundaries))
+
+def get_initial_stats(vocab):
+    """统计所有相邻字节对的频率"""
+    pairs = {}
+    for word, freq in vocab.items():
+        for i in range(len(word) - 1):
+            pair = (word[i], word[i+1])
+            pairs[pair] = pairs.get(pair, 0) + freq
+    return pairs
+
+def update_pair_counts_incrementally(pair_counts, word_tuple, freq_delta, old_pair, new_token):
+    """增量更新 pairs"""
+    # 扫描当前单词，找到所有涉及 old_pair 的位置，并计算变化
+    i = 0
+    while i < len(word_tuple) - 1:
+        # 检查是否命中待合并的 old_pair
+        if word_tuple[i] == old_pair[0] and word_tuple[i+1] == old_pair[1]:
+            # --- 旧词对消失 ---
+            # 1. (old_pair[0], old_pair[1]) 消失
+            pair_counts[(old_pair[0], old_pair[1])] -= freq_delta
+            
+            # 2. 左边的邻居对 (prev, old_pair[0]) 消失
+            if i > 0:
+                pair_counts[(word_tuple[i-1], old_pair[0])] = pair_counts.get((word_tuple[i-1], old_pair[0]), 0) - freq_delta
+            
+            # 3. 右边的邻居对 (old_pair[1], next) 消失
+            if i < len(word_tuple) - 2:
+                pair_counts[(old_pair[1], word_tuple[i+2])] = pair_counts.get((old_pair[1], word_tuple[i+2]), 0) - freq_delta
+
+            # --- 新词对产生 ---
+            # 1. 新的邻居对 (prev, new_token) 产生
+            if i > 0:
+                pair_counts[(word_tuple[i-1], new_token)] = pair_counts.get((word_tuple[i-1], new_token), 0) + freq_delta
+            
+            # 2. 新的邻居对 (new_token, next) 产生
+            if i < len(word_tuple) - 2:
+                pair_counts[(new_token, word_tuple[i+2])] = pair_counts.get((new_token, word_tuple[i+2]), 0) + freq_delta
+            
+            i += 2
+        else:
+            i += 1
+
+def build_vocab_from_merges(merges, special_tokens=[]):
+    '''从merges中恢复出BPE词表'''
+    vocab = {}
+
+    for i, token in enumerate(special_tokens):
+        vocab[i] = token.encode('utf-8')
+
+    next_id = len(special_tokens)
+
+    for i in range(256):
+        vocab[i + next_id] = bytes([i])
+
+    next_id = i + next_id + 1
+    
+    for pair in merges:
+        p0, p1 = pair
+
+        new_token_bytes = p0 + p1
+        vocab[next_id] = new_token_bytes
+        
+        next_id += 1
+    
+    return vocab
+
+def save_tokenizer_json(vocab, merges, file_path="my_bpe_tokenizer.json"):
+    '''将结果保存下来'''
+    vocab_str = {str(k): v.decode('latin-1') for k, v in vocab.items()}
+    merges_str = [" ".join([p.decode('latin-1') for p in pair]) for pair in merges]
+    
+    tokenizer_data = {
+        "vocab": vocab_str,
+        "merges": merges_str
+    }
+    
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(tokenizer_data, f, indent=2, ensure_ascii=False)
+        
+    print(f"✅ 分词器已保存至: {file_path}")
+
+def pretokenize_and_count(chunk, special_tokens):
+    """对单个文本片段进行预分词并统计"""
+    counts = {}
+
+    chunk = chunk.replace('\r\n', '\n') # 处理windows与linux文本换行符的差异
+
+    if special_tokens:
+        escaped_tokens = [re.escape(token) for token in special_tokens]
+        split_pattern = "|".join(escaped_tokens)
+        if split_pattern:
+             segments = re.split(split_pattern, chunk)
+        else:
+             segments = [chunk]
+    else:
+        segments = [chunk]
+
+    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
+    for seq in segments:
+        if not seq:
+            continue
+
+        for match in re.finditer(PAT, seq):
+            token_str = match.group()
+            token_bytes_tuple = tuple(bytes([b]) for b in token_str.encode("utf-8"))
+            counts[token_bytes_tuple] = counts.get(token_bytes_tuple, 0) + 1
+
+    return counts
+
+def process_chunk(args):
+    '''包装对chunk的处理，方便并行'''
+    input_path, start, end, special_tokens = args
+    counts = {}
+    with open(input_path, 'rb') as f:
+        f.seek(start)
+        chunk = f.read(end - start).decode("utf-8", errors="ignore")
+        counts = pretokenize_and_count(chunk, special_tokens)
+    return counts
+
+def to_run_train_bpe(
+        input_path: str, 
+        vocab_size: int, 
+        special_tokens: list[str],
+    ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    merges = []
+    '''主训练函数'''
+
+    # 获取文件大小来决定是否使用多进程
+    file_size = os.path.getsize(input_path)
+
+    if file_size < 1024 * 1024:
+        with open(input_path, 'r', encoding='utf-8', errors='ignore') as f:
+            chunk = f.read()
+            total_counts = pretokenize_and_count(chunk, special_tokens)
+    else:
+        with open(input_path, "rb") as f:
+            num_processes = 4
+            boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+            tasks = [(input_path, start, end, special_tokens) for start, end in zip(boundaries[:-1], boundaries[1:])]
+            with multiprocessing.Pool(processes=num_processes) as pool:
+                results = pool.map(process_chunk, tasks)
+                
+            total_counts = {}
+        
+            for partial_counts in results:
+                for token, count in partial_counts.items():
+                    if token in total_counts:
+                        total_counts[token] += count
+                    else:
+                        total_counts[token] = count
+
+    # 统计所有 pair 的频率
+    pairs = get_initial_stats(total_counts)
+
+    # BPE 合并循环
+    while len(special_tokens) + 256 + len(merges) < vocab_size:
+        if not pairs:
+            break
+
+        # 找到频率最高的 pair，频率相同时选择字典序最大的
+        max_freq = max(pairs.values())
+        best_pair = max(pair for pair, freq in pairs.items() if freq == max_freq)
+
+        merges.append(best_pair)
+        new_token = best_pair[0] + best_pair[1]
+        new_total_counts = {} 
+        # 增量更新pairs字典，统计相邻token出现的次数，同时更新total_counts
+        # 想要更快的话，还要维护pairs: word_tuple 字典，用best_pair查找要更新的word_tuple
+        for word_tuple, freq in total_counts.items():
+            update_pair_counts_incrementally(pairs, word_tuple, freq, best_pair, new_token)
+            new_word = []
+            i = 0
+            while i < len(word_tuple):
+                # 检查当前位置是否是待合并的 pair
+                if i < len(word_tuple) - 1 and word_tuple[i] == best_pair[0] and word_tuple[i+1] == best_pair[1]:
+                    # 合并这两个字节
+                    new_word.append(best_pair[0] + best_pair[1])
+                    i += 2
+                else:
+                    new_word.append(word_tuple[i])
+                    i += 1
+            new_total_counts[tuple(new_word)] = freq
+        
+        total_counts = new_total_counts
+
+    vocab = build_vocab_from_merges(merges, special_tokens)
+    return vocab, merges
+
+
+if __name__ == '__main__':
+    input_path = r'D:\Dev\assignment1-basics\data\TinyStoriesV2-GPT4-valid.txt'
+    vocab_size = 500
+    special_tokens = [r'<|endoftext|>']
+
+    vocab, merges = to_run_train_bpe(input_path, vocab_size, special_tokens)
+    save_tokenizer_json(vocab, merges, file_path="my_bpe_tokenizer.json")
