@@ -122,8 +122,13 @@ class Tokenizer():
                 token_str = match.group()
                 if not token_str:
                     continue
-                token_bytes_tuple = tuple(bytes([b]) for b in token_str.encode("utf-8"))
-                seqs.append(token_bytes_tuple)
+                if token_str in self.special_tokens:
+                    token_bytes = token_str.encode("utf-8")
+                    token_bytes_tuple = (token_bytes,) 
+                    seqs.append(token_bytes_tuple)
+                else:
+                    token_bytes_tuple = tuple(bytes([b]) for b in token_str.encode("utf-8"))
+                    seqs.append(token_bytes_tuple)
         else:
             for match in re.finditer(PAT, chunk):
                 token_str = match.group()
@@ -207,3 +212,10 @@ class Tokenizer():
                         self.pair_to_index[new_pair] = [i]
 
             del self.pair_to_index[pair]
+
+
+if __name__ == '__main__':
+    special_token = "<|endoftext|>"
+    token_bytes = special_token.encode("utf-8")
+    token_bytes_tuple = (token_bytes,) 
+    print(token_bytes_tuple)
