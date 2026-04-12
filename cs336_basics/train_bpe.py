@@ -115,20 +115,66 @@ def build_vocab_from_merges(merges, special_tokens=[]):
     
     return vocab
 
-def save_tokenizer_json(vocab, merges, file_path="my_bpe_tokenizer.json"):
+def save_tokenizer_json(vocab, merges, vocab_path="bpe_vocab.json", merges_path="bpe_merges.json"):
     '''将结果保存下来'''
     vocab_str = {str(k): v.decode('latin-1') for k, v in vocab.items()}
-    merges_str = [" ".join([p.decode('latin-1') for p in pair]) for pair in merges]
+    merges_str = []
+    for p1, p2 in merges:
+        merges_str.append([p1.decode('latin-1'), p2.decode('latin-1')])
     
-    tokenizer_data = {
+    vocab_data = {
         "vocab": vocab_str,
-        "merges": merges_str
+    }
+    merges_data = {
+        "merges": merges_str,
     }
     
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(tokenizer_data, f, indent=2, ensure_ascii=False)
+    with open(vocab_path, "w", encoding="utf-8") as f:
+        json.dump(vocab_data, f, indent=2, ensure_ascii=False)
+
+    with open(merges_path, "w", encoding="utf-8") as f:
+        json.dump(merges_data, f, indent=2, ensure_ascii=False)
         
-    print(f"✅ 分词器已保存至: {file_path}")
+    print(f"✅ 分词器已保存至: {vocab_path}, {merges_path}")
+
+def load_vocab_json(vocab_path):
+    with open(vocab_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    # 还原 Vocab
+    vocab = {int(k): v.encode('latin-1') for k, v in data['vocab'].items()}
+    
+    return vocab
+
+def load_vocab_gpt2(vocab_path):
+    with open(vocab_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+        # 还原 Vocab
+        vocab = {int(v): k.encode('utf-8') for k, v in data.items()}
+    return vocab
+
+def load_merges_json(merges_path):
+    with open(merges_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    
+    # print(data)
+    merges = []
+    for pair in data['merges']:
+        p1_str, p2_str = pair[0], pair[1]
+        merges.append((p1_str.encode('latin-1'), p2_str.encode('latin-1')))
+    
+    return merges
+
+def load_merges_gpt2(merges_path):
+    merges = []
+    with open(merges_path, "r", encoding="utf-8") as f:
+        for line in f:
+            parts = line.split(' ')
+            byte_tuple = tuple(part.encode('utf-8') for part in parts)
+            merges.append(byte_tuple)
+
+    return merges
 
 def pretokenize_and_count(chunk, special_tokens):
     """对单个文本片段进行预分词并统计"""
@@ -245,4 +291,4 @@ if __name__ == '__main__':
     special_tokens = [r'<|endoftext|>']
 
     vocab, merges = to_run_train_bpe(input_path, vocab_size, special_tokens)
-    save_tokenizer_json(vocab, merges, file_path="my_bpe_tokenizer.json")
+    save_tokenizer_json(vocab, merges, vocab_path="cs336_basics/bpe_vocab.json", merges_path="cs336_basics/bpe_merges.json")
