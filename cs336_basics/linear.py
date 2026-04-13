@@ -20,7 +20,7 @@ class Linear(nn.Module):
             self.device = device
             self.weights.to(self.device)
 
-        elif dtype:
+        if dtype:
             self.dtype = dtype
             self.weights.to(self.dtype)
         
