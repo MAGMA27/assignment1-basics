@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from einops import einsum
 
 class Embedding(nn.Module):
     def __init__(self, num_embeddings, embedding_dim, device=None, dtype=None):
@@ -13,16 +12,10 @@ class Embedding(nn.Module):
         super().__init__()
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
-        self.embedding_mat = torch.Tensor(num_embeddings, embedding_dim)
+        self.embedding_mat = nn.Parameter(
+            torch.empty((num_embeddings, embedding_dim), device=device, dtype=dtype)
+        )
 
-        if device:
-            self.device = device
-            self.embedding_mat.to(self.device)
-
-        if dtype:
-            self.dtype = dtype
-            self.embedding_mat.to(self.dtype)
-        
         std = 1
         nn.init.trunc_normal_(self.embedding_mat, mean=0.0, std=std, a=-3, b=3)
         

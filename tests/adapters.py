@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterable
 from typing import IO, Any, BinaryIO
+import torch.nn as nn
 
 import numpy.typing as npt
 import torch
@@ -13,6 +14,7 @@ from cs336_basics.train_bpe import to_run_train_bpe
 from cs336_basics.tokenizer import Tokenizer
 from cs336_basics.linear import Linear
 from cs336_basics.embedding import Embedding
+from cs336_basics.rmsnorm import RMSNorm
 
 def run_linear(
     d_in: int,
@@ -32,8 +34,6 @@ def run_linear(
     Returns:
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
-    import torch.nn as nn
-
     ln = Linear(d_in, d_out)
     ln.weights = nn.Parameter(weights)
     return ln(in_features)
@@ -58,7 +58,6 @@ def run_embedding(
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
-    import torch.nn as nn
     emb = Embedding(vocab_size, d_model)
     emb.embedding_mat = nn.Parameter(weights)
     return emb(token_ids)
@@ -389,6 +388,9 @@ def run_rmsnorm(
         Float[Tensor,"... d_model"]: Tensor of with the same shape as `in_features` with the output of running
         RMSNorm of the `in_features`.
     """
+    rmsn = RMSNorm(d_model, eps)
+    rmsn.gain = nn.Parameter(weights)
+    return rmsn(in_features)
     raise NotImplementedError
 
 
