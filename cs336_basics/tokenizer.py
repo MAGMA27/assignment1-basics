@@ -10,6 +10,8 @@ class Tokenizer():
         '''
         vocab: dict[int, bytes]
         merges: list[tuple[bytes, bytes]]
+
+        3
         special_tokens: list[str] | None = None
         '''
         self.vocab = vocab

@@ -135,8 +135,6 @@ def save_tokenizer_json(vocab, merges, vocab_path="bpe_vocab.json", merges_path=
     with open(merges_path, "w", encoding="utf-8") as f:
         json.dump(merges_data, f, indent=2, ensure_ascii=False)
         
-    print(f"✅ 分词器已保存至: {vocab_path}, {merges_path}")
-
 def load_vocab_json(vocab_path):
     with open(vocab_path, "r", encoding="utf-8") as f:
         data = json.load(f)
