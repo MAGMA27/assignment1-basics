@@ -3,9 +3,11 @@ import torch.nn as nn
 from cs336_basics.multihead_self_attention_rope import MultiheadSelfAttentionRoPE
 from cs336_basics.rmsnorm import RMSNorm
 from cs336_basics.positionwise_feedforward import SwiGLU
+from cs336_basics.rope import RotaryPositionalEmbedding
+
 
 class TransformerBlock(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, d_ff: int, max_seq_len: int, theta: float, device=None, dtype=None):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, rope: RotaryPositionalEmbedding, device=None, dtype=None):
         '''
         d_model: int Dimensionality of the Transformer block inputs.
         num_heads: int Number of heads to use in multi-head self-attention.
@@ -15,8 +17,9 @@ class TransformerBlock(nn.Module):
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_ff = d_ff
+        self.rope = rope
         self.RMSN1 = RMSNorm(d_model, device=device, dtype=dtype)
-        self.MHA = MultiheadSelfAttentionRoPE(d_model, num_heads, max_seq_len, theta, device=device, dtype=dtype)
+        self.MHA = MultiheadSelfAttentionRoPE(d_model, num_heads, rope, device=device, dtype=dtype)
         self.RMSN2 = RMSNorm(d_model, device=device, dtype=dtype)
         self.FF = SwiGLU(d_model, d_ff, device=device, dtype=dtype)
 

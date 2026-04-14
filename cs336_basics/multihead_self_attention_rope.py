@@ -7,7 +7,14 @@ from cs336_basics.rope import RotaryPositionalEmbedding
 
 
 class MultiheadSelfAttentionRoPE(nn.Module):
-    def __init__(self, d_model: int, num_heads: int, max_seq_len: int, theta: float, device=None, dtype=None):
+    def __init__(self, 
+                 d_model: int, 
+                 num_heads: int, 
+                #  max_seq_len: int, 
+                #  theta: float, 
+                 rope: RotaryPositionalEmbedding, 
+                 device=None, dtype=None
+                 ):
         '''
         d_model: int Dimensionality of the Transformer block inputs.
         num_heads: int Number of heads to use in multi-head self-attention.
@@ -15,11 +22,12 @@ class MultiheadSelfAttentionRoPE(nn.Module):
         super().__init__()
         self.d_model = d_model
         self.h = num_heads
-        self.Q = Linear(d_model, d_model, device=None, dtype=None)
-        self.K = Linear(d_model, d_model, device=None, dtype=None)
-        self.V = Linear(d_model, d_model, device=None, dtype=None)
-        self.O = Linear(d_model, d_model, device=None, dtype=None)
-        self.rope = RotaryPositionalEmbedding(theta, d_model//num_heads, max_seq_len)
+        self.Q = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.K = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.V = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.O = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.rope = rope
+        # self.rope = RotaryPositionalEmbedding(theta, d_model//num_heads, max_seq_len)
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor=None) -> torch.Tensor:
         '''
@@ -37,8 +45,8 @@ class MultiheadSelfAttentionRoPE(nn.Module):
         K = rearrange(K, "... sq_l (h d) -> h ... sq_l d", h=self.h)
         V = rearrange(V, "... sq_l (h d) -> h ... sq_l d", h=self.h)
 
-        Q = self.rope(Q, token_positions)
-        K = self.rope(K, token_positions)
+        Q = self.rope(Q, token_positions=token_positions)
+        K = self.rope(K, token_positions=token_positions)
 
         attention = scaled_dot_product_attention(Q, K, V, mask=causal_mask)
         attention = rearrange(attention, "h ... sq_l d -> ... sq_l (h d)", h=self.h)

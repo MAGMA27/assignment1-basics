@@ -22,6 +22,7 @@ from cs336_basics.scaled_dot_product_attention import scaled_dot_product_attenti
 from cs336_basics.multihead_self_attention import MultiheadSelfAttention
 from cs336_basics.multihead_self_attention_rope import MultiheadSelfAttentionRoPE
 from cs336_basics.transformer_block import TransformerBlock
+from cs336_basics.transformer_lm import TransformerLM
 
 def run_linear(
     d_in: int,
@@ -207,7 +208,8 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    multi = MultiheadSelfAttentionRoPE(d_model, num_heads, max_seq_len, theta)
+    rope = RotaryPositionalEmbedding(theta, d_model//num_heads, max_seq_len)
+    multi = MultiheadSelfAttentionRoPE(d_model, num_heads, rope)
     multi.Q.weights = nn.Parameter(q_proj_weight)
     multi.K.weights = nn.Parameter(k_proj_weight)
     multi.V.weights = nn.Parameter(v_proj_weight)
@@ -311,7 +313,8 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    tfb = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta)
+    rope = RotaryPositionalEmbedding(theta, d_model//num_heads, max_seq_len)
+    tfb = TransformerBlock(d_model, num_heads, d_ff, rope)
     tfb.MHA.Q.weights = nn.Parameter(weights['attn.q_proj.weight'])
     tfb.MHA.K.weights = nn.Parameter(weights['attn.k_proj.weight'])
     tfb.MHA.V.weights = nn.Parameter(weights['attn.v_proj.weight'])
@@ -324,7 +327,6 @@ def run_transformer_block(
     tfb.FF.w3.weights = nn.Parameter(weights['ffn.w3.weight'])
 
     tfb.RMSN2.gain = nn.Parameter(weights['ln2.weight'])
-
 
     return tfb(in_features)
     raise NotImplementedError
@@ -409,6 +411,27 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
+    transLM = TransformerLM(vocab_size, context_length, num_layers, d_model,
+                            num_heads,d_ff, rope_theta)
+    transLM.emb.embedding_mat = nn.Parameter(weights['token_embeddings.weight'])
+    for i in range(num_layers):
+        transLM.TFB_lst[i].MHA.Q.weights = nn.Parameter(weights[f'layers.{i}.attn.q_proj.weight'])
+        transLM.TFB_lst[i].MHA.K.weights = nn.Parameter(weights[f'layers.{i}.attn.k_proj.weight'])
+        transLM.TFB_lst[i].MHA.V.weights = nn.Parameter(weights[f'layers.{i}.attn.v_proj.weight'])
+        transLM.TFB_lst[i].MHA.O.weights = nn.Parameter(weights[f'layers.{i}.attn.output_proj.weight'])
+
+        transLM.TFB_lst[i].RMSN1.gain = nn.Parameter(weights[f'layers.{i}.ln1.weight'])
+
+        transLM.TFB_lst[i].FF.w1.weights = nn.Parameter(weights[f'layers.{i}.ffn.w1.weight'])
+        transLM.TFB_lst[i].FF.w2.weights = nn.Parameter(weights[f'layers.{i}.ffn.w2.weight'])
+        transLM.TFB_lst[i].FF.w3.weights = nn.Parameter(weights[f'layers.{i}.ffn.w3.weight'])
+
+        transLM.TFB_lst[i].RMSN2.gain = nn.Parameter(weights[f'layers.{i}.ln2.weight'])
+
+    transLM.final_rmsn.gain = nn.Parameter(weights['ln_final.weight'])
+    transLM.lm_head.weights = nn.Parameter(weights['lm_head.weight'])
+    
+    return transLM(in_indices)
     raise NotImplementedError
 
 
