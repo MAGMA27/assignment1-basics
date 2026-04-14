@@ -19,6 +19,8 @@ from cs336_basics.positionwise_feedforward import SwiGLU
 from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
 from cs336_basics.scaled_dot_product_attention import scaled_dot_product_attention
+from cs336_basics.multihead_self_attention import MultiheadSelfAttention
+from cs336_basics.multihead_self_attention_rope import MultiheadSelfAttentionRoPE
 
 def run_linear(
     d_in: int,
@@ -158,6 +160,12 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
+    multi = MultiheadSelfAttention(d_model, num_heads)
+    multi.Q.weights = nn.Parameter(q_proj_weight)
+    multi.K.weights = nn.Parameter(k_proj_weight)
+    multi.V.weights = nn.Parameter(v_proj_weight)
+    multi.O.weights = nn.Parameter(o_proj_weight)
+    return multi(in_features)
     raise NotImplementedError
 
 
@@ -198,6 +206,12 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
+    multi = MultiheadSelfAttentionRoPE(d_model, num_heads, max_seq_len, theta)
+    multi.Q.weights = nn.Parameter(q_proj_weight)
+    multi.K.weights = nn.Parameter(k_proj_weight)
+    multi.V.weights = nn.Parameter(v_proj_weight)
+    multi.O.weights = nn.Parameter(o_proj_weight)
+    return multi(in_features, token_positions)
     raise NotImplementedError
 
 
