@@ -23,6 +23,7 @@ from cs336_basics.multihead_self_attention import MultiheadSelfAttention
 from cs336_basics.multihead_self_attention_rope import MultiheadSelfAttentionRoPE
 from cs336_basics.transformer_block import TransformerBlock
 from cs336_basics.transformer_lm import TransformerLM
+from cs336_basics.cross_entropy import cross_entropy
 
 def run_linear(
     d_in: int,
@@ -530,6 +531,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
+    return cross_entropy(inputs, targets)
     raise NotImplementedError
 
 
