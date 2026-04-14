@@ -28,6 +28,3 @@ class RMSNorm(nn.Module):
 if __name__ == "__main__":
     ''''''
     t = torch.ones(5)
-    print(t.device)
-    t.to('cuda')  # 或 'cpu' 取决于你的环境
-    print(t.device)  # 看看有没有变化？

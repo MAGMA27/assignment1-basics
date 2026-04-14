@@ -24,11 +24,14 @@ class RotaryPositionalEmbedding(nn.Module):
         sin_buffer = torch.sin(rope_theta)
         self.register_buffer("sin_buffer", sin_buffer, persistent=False)
 
-    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor=None) -> torch.Tensor:
         '''
         x: Float[Tensor, "... sequence_length d_k"]
         token_positions: Int[Tensor, "... sequence_length"]
         '''
+        if token_positions == None:
+            token_positions = torch.arange(0, x.shape[-2])
+
         x1 = x[..., 0::2]
         x2 = x[..., 1::2]
         output = torch.empty_like(x)

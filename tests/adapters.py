@@ -21,6 +21,7 @@ from cs336_basics.softmax import softmax
 from cs336_basics.scaled_dot_product_attention import scaled_dot_product_attention
 from cs336_basics.multihead_self_attention import MultiheadSelfAttention
 from cs336_basics.multihead_self_attention_rope import MultiheadSelfAttentionRoPE
+from cs336_basics.transformer_block import TransformerBlock
 
 def run_linear(
     d_in: int,
@@ -310,6 +311,22 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
+    tfb = TransformerBlock(d_model, num_heads, d_ff, max_seq_len, theta)
+    tfb.MHA.Q.weights = nn.Parameter(weights['attn.q_proj.weight'])
+    tfb.MHA.K.weights = nn.Parameter(weights['attn.k_proj.weight'])
+    tfb.MHA.V.weights = nn.Parameter(weights['attn.v_proj.weight'])
+    tfb.MHA.O.weights = nn.Parameter(weights['attn.output_proj.weight'])
+
+    tfb.RMSN1.gain = nn.Parameter(weights['ln1.weight'])
+
+    tfb.FF.w1.weights = nn.Parameter(weights['ffn.w1.weight'])
+    tfb.FF.w2.weights = nn.Parameter(weights['ffn.w2.weight'])
+    tfb.FF.w3.weights = nn.Parameter(weights['ffn.w3.weight'])
+
+    tfb.RMSN2.gain = nn.Parameter(weights['ln2.weight'])
+
+
+    return tfb(in_features)
     raise NotImplementedError
 
 

@@ -21,7 +21,7 @@ class MultiheadSelfAttentionRoPE(nn.Module):
         self.O = Linear(d_model, d_model, device=None, dtype=None)
         self.rope = RotaryPositionalEmbedding(theta, d_model//num_heads, max_seq_len)
 
-    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor=None) -> torch.Tensor:
         '''
         x: (Float[Tensor, "... sequence_length d_model"]): Tensor to run your implementation on.
         '''
