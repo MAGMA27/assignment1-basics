@@ -30,15 +30,15 @@ class TransformerLM(nn.Module):
 
         self.emb = Embedding(vocab_size, d_model, device=device, dtype=dtype)
 
-        self.rope = RotaryPositionalEmbedding(rope_theta, d_model//num_heads, context_length)
+        self.rope = RotaryPositionalEmbedding(rope_theta, d_model//num_heads, context_length, device=device)
 
         self.TFB_lst = []
         for i in range(num_layers):
-            self.TFB_lst.append(TransformerBlock(d_model, num_heads, d_ff, self.rope))
+            self.TFB_lst.append(TransformerBlock(d_model, num_heads, d_ff, self.rope, device=device, dtype=dtype))
 
-        self.final_rmsn = RMSNorm(d_model)
+        self.final_rmsn = RMSNorm(d_model, device=device, dtype=dtype)
 
-        self.lm_head = Linear(d_model, vocab_size)
+        self.lm_head = Linear(d_model, vocab_size, device=device, dtype=dtype)
 
     def forward(self, x: torch.Tensor):
         ''''''

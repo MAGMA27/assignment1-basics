@@ -28,13 +28,14 @@ class MultiheadSelfAttentionRoPE(nn.Module):
         self.O = Linear(d_model, d_model, device=device, dtype=dtype)
         self.rope = rope
         # self.rope = RotaryPositionalEmbedding(theta, d_model//num_heads, max_seq_len)
+        self.device = device
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor=None) -> torch.Tensor:
         '''
         x: (Float[Tensor, "... sequence_length d_model"]): Tensor to run your implementation on.
         '''
         sq_l = x.shape[-2]
-        ones_matrix = torch.ones(sq_l, sq_l)
+        ones_matrix = torch.ones(sq_l, sq_l, device=x.device)
         causal_mask = torch.tril(ones_matrix, diagonal=0).to(torch.bool)
 
         Q = self.Q(x)

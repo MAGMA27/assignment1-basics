@@ -3,6 +3,10 @@ import os
 from collections.abc import Iterable, Iterator
 import regex as re
 import multiprocessing
+from tqdm import tqdm
+import multiprocessing as mp
+import numpy as np
+
 
 
 class Tokenizer():
@@ -49,6 +53,17 @@ class Tokenizer():
                 encode_seqs.append(self.vocab_reversed[tk])
 
         return encode_seqs
+    
+    # def encode_parallel(self, batch_id: int, text: str) -> tuple[int, list[int]]:
+    #     self.pre_tokenize_from_text(text)
+    #     self.init_pair_2_index()
+    #     self.merges_all()
+    #     encode_seqs = []
+    #     for tokens in self.seqs:
+    #         for tk in tokens:
+    #             encode_seqs.append(self.vocab_reversed[tk])
+
+    #     return batch_id, encode_seqs
 
     def encode_iterable(self, iterable: Iterable[str], batch_size=5000) -> Iterator[int]:
         current_batch = ""
@@ -198,6 +213,46 @@ class Tokenizer():
 
             del self.pair_to_index[pair]
 
+
+
+_global_tokenizer = None
+
+def init_worker(vocab_path, merges_path, special_tokens, fmt):
+    """
+    每个 Worker 进程启动时运行一次，初始化 Tokenizer
+    """
+    global _global_tokenizer
+    # 在每个子进程中重新加载 Tokenizer
+    _global_tokenizer = Tokenizer.from_files(vocab_path, merges_path, 
+                                             special_tokens=special_tokens, format=fmt)
+    
+def get_batches_generator(filepath, batch_size):
+    with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+        batch_id = 0
+        current_batch = ""
+        line_counter = 0
+        
+        for line in f:
+            current_batch += line
+            line_counter += 1
+            # 当批次攒够 batch_size 行，就作为一个任务发出去
+            if line_counter >= batch_size:
+                yield (batch_id, current_batch)
+                batch_id += 1
+                current_batch = ""
+                line_counter = 0
+        
+        # 处理最后剩余不足 batch_size 的行
+        if current_batch:
+            yield (batch_id, current_batch)
+
+def worker_encode_batch(args):
+    batch_id, current_batch = args
+    tokens = _global_tokenizer.encode(current_batch)
+    return batch_id, tokens
+    
+
+
 if __name__ == '__main__':
     vocab_filepath = r'data\vocab_TinyStoriesV2.json'
     merges_filepath = r'data\merges_TinyStoriesV2.json'
@@ -206,21 +261,41 @@ if __name__ == '__main__':
     tker = Tokenizer.from_files(vocab_filepath, merges_filepath, 
                                 special_tokens=special_tokens, format=format)
     
+    # tk_path = r'D:\Dev\assignment1-basics\data\tokens_TinyStoriesV2_train.npy'
+    # tks = np.fromfile(tk_path, dtype=np.uint16)
+    # print(tker.decode(tks[:5000]))
+    
 
-    import numpy as np
     max_tokens = 10_000_000_000
-    txt_filepath = r'D:\Dev\assignment1-basics\data\TinyStoriesV2-GPT4-train.txt'
-    tokens_outpath = r'data/tokens_TinyStoriesV2_train'
+    txt_filepath = r'D:\Dev\assignment1-basics\data\TinyStoriesV2-GPT4-valid.txt'
+    tokens_outpath = r'data/tokens_TinyStoriesV2_valid.npy'
     fp = np.memmap(tokens_outpath, dtype=np.uint16, mode='w+', shape=(max_tokens,))
     current_idx = 0
+    batch_size = 10000
+    num_workers = 4
 
-    with open(txt_filepath, 'r', encoding='utf-8', errors='ignore') as f:
-        tks_it = tker.encode_iterable(f)
-        for tks in tks_it:
-            tks_array = np.array(tks, dtype=np.uint16)
-            fp[current_idx : current_idx + len(tks)] = tks_array
-            current_idx += len(tks)
+    with mp.Pool(processes=num_workers, initializer=init_worker, 
+                 initargs=(vocab_filepath, merges_filepath, special_tokens, format)) as pool:
+        
+        tasks = pool.imap(worker_encode_batch, get_batches_generator(txt_filepath, batch_size), chunksize=1)
 
-    fp.resize(current_idx)
-    fp.flush()
+        for batch_id, token_list in tqdm(tasks, desc="Encoding", unit="batch"):
+            if token_list: # 确保列表不为空
+                # 转为 numpy 数组以便快速写入
+                arr = np.array(token_list, dtype=np.uint16)
+                
+                # 写入 memmap 指定位置
+                fp[current_idx : current_idx + len(arr)] = arr
+                current_idx += len(arr)
+
+    fp.flush()   # 确保数据落盘
+    del fp       # 释放原对象
+    
+    # 使用 os.truncate 真正地在磁盘上截断文件
+    # 计算最终文件应有的字节大小
+    final_size_in_bytes = (current_idx+1) * np.uint16().itemsize
+    with open(tokens_outpath, 'r+b') as f:
+        f.truncate(final_size_in_bytes)
+    
     print(f"保存完成，总 Token 数: {current_idx}")
+    print(f"文件已截断至: {final_size_in_bytes / (1024**3):.2f} GB")

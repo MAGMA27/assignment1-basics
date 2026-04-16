@@ -6,6 +6,7 @@ from cs336_basics.adamw import AdamW
 from cs336_basics.cross_entropy import cross_entropy
 from cs336_basics.gradient_clipping import gradient_clipping
 from cs336_basics.learning_rate_schedule import learning_rate_schedule
+from cs336_basics.checkpointing import save_checkpoint, load_checkpoint
 import datetime
 import wandb 
 from argparse import Namespace
@@ -18,11 +19,11 @@ config = Namespace(
 )
 
 project ='wandb_demo'
-
+run_idx = 1
 config = {
     # hyperparameters
     ## training loop
-    'total_steps': 1000,
+    'total_steps': 2000,
     'batch_size': 32,
     'device': torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
     'lazy_load': False,
@@ -35,33 +36,40 @@ config = {
     'num_layers': 4,
     'num_heads': 16,
     ## optimizer
-    'lr_max': 1e-1,
-    'lr_min': 1e-4,
+    'lr_max': 1e-2,
+    'lr_min': 1e-5,
     'betas': (0.999, 0.9),
     'eps': 1e-6,
     'weight_decay': 0.01,
     'l2_max': 1,
     ## tokens id file
-    'tk_train_file': r"",
-    'tk_valid_file': r""
+    'tk_train_file': r"D:\Dev\assignment1-basics\data\tokens_TinyStoriesV2_train.npy",
+    'tk_valid_file': r"D:\Dev\assignment1-basics\data\tokens_TinyStoriesV2_valid.npy",
+    ## checkpoint
+    'load_ckpt_path': r'',
+    'save_ckpt_path': r'check_points'
 }
+
+print(config['device'])
 
 config['lr_T_w'] = int(np.around(config['total_steps'] * 0.1))
 config['lr_T_c'] = int(np.around(config['total_steps'] * 0.85))
 
 ## tokens id file
 if config['lazy_load']:
-    tokens_train = np.load(config['tk_train_file'], mmap_mode='r')
-    tokens_valid = np.load(config['tk_valid_file'], mmap_mode='r')
+    tokens_train = np.memmap(config['tk_train_file'], dtype=np.uint16, mode='r')
+    tokens_valid = np.memmap(config['tk_valid_file'], dtype=np.uint16, mode='r')
 else:
-    tokens_train = np.load(config['tk_train_file'])
-    tokens_valid = np.load(config['tk_valid_file'])
+    tokens_train = np.fromfile(config['tk_train_file'], dtype=np.uint16)
+    tokens_valid = np.fromfile(config['tk_valid_file'], dtype=np.uint16)
 
 # initial model
 model = TransformerLM(
     config['vocab_size'], config['context_length'], config['num_layers'], config['d_model'],
     config['num_heads'], config['d_ff'], config['rope_theta'], device=config['device']
 )
+
+model = model.to(config['device'])
 
 # initial optimizer
 opt = AdamW(model.parameters(), lr=config['lr_max'], weight_decay=config['weight_decay'], 
@@ -85,7 +93,7 @@ with wandb.init(project=project, config=config) as run:
         for param_group in opt.param_groups:
             param_group['lr'] = lr
         ## forward
-        lm_head = TransformerLM(sequences)
+        lm_head = model(sequences)
         ## loss
         loss = cross_entropy(lm_head, targets)
         ## backward
@@ -100,13 +108,16 @@ with wandb.init(project=project, config=config) as run:
         # valid loss
         seq_val, tar_val = data_loading(tokens_valid, config['batch_size'], 
                                           config['context_length'], device=config['device'])
-        lm_head_val = TransformerLM(seq_val)
+        lm_head_val = model(seq_val)
         valid_loss = cross_entropy(lm_head_val, tar_val)
         # print and log
         #======================================================================
         print(f'step:{it} from {start_time} to {end_time} training_loss={loss} valid_loss={valid_loss}')
         wandb.log({'it':it, 'training_loss': loss, 'valid_loss': valid_loss})
         #======================================================================
+        if (it+1) // 200 == 0:
+            output_path = f'{config['save_ckpt_path']}\\{project}_run{run_idx}_it{it}.pt'
+            save_checkpoint(model, opt, it, output_path)
 
 #======================================================================
 wandb.finish()

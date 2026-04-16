@@ -4,8 +4,8 @@ import torch
 
 def data_loading(x: np.array, batch_size: int, context_length: int, device=None) -> tuple[torch.Tensor, torch.Tensor]:
     ''''''
-    seq = torch.from_numpy(x[:-1]).to(device=device)
-    target = torch.from_numpy(x[1:]).to(device=device)
+    seq = torch.from_numpy(x[:-1]).to(device=device).int()
+    target = torch.from_numpy(x[1:]).to(device=device).int()
 
     start_point = np.random.randint(0, len(x)-context_length, size=batch_size)
     
