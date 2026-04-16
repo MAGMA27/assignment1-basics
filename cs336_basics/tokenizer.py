@@ -23,14 +23,20 @@ class Tokenizer():
         self.vocab_reversed = {v: k for k, v in self.vocab.items()}
 
     @classmethod
-    def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
+    def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None, format='gpt2'):
         '''
         vocab_filepath: str
         merges_filepath: str
         special_tokens: list[str] | None = None
         '''
-        vocab = train_bpe.load_vocab_gpt2(vocab_filepath)
-        merges = train_bpe.load_merges_gpt2(merges_filepath)
+        if format=='gpt2':
+            vocab = train_bpe.load_vocab_gpt2(vocab_filepath)
+            merges = train_bpe.load_merges_gpt2(merges_filepath)
+
+        if format=='local':
+            vocab = train_bpe.load_vocab_json(vocab_filepath)
+            merges = train_bpe.load_merges_json(merges_filepath)
+
         return cls(vocab, merges, special_tokens)
 
     def encode(self, text: str) -> list[int]:
@@ -44,10 +50,17 @@ class Tokenizer():
 
         return encode_seqs
 
-    def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
+    def encode_iterable(self, iterable: Iterable[str], batch_size=5000) -> Iterator[int]:
+        current_batch = ""
         for line in iterable:
-            ids = self.encode(line)
-            yield from ids
+            current_batch += line + "\n"
+            if len(current_batch) >= batch_size:
+                ids = self.encode(current_batch)
+                yield ids
+                current_batch = ""
+        if current_batch:
+            ids = self.encode(current_batch)
+            yield ids
 
     def decode(self, ids: list[int]) -> str:
         decode_seqs = []
@@ -184,3 +197,30 @@ class Tokenizer():
                         self.pair_to_index[new_pair] = [i]
 
             del self.pair_to_index[pair]
+
+if __name__ == '__main__':
+    vocab_filepath = r'data\vocab_TinyStoriesV2.json'
+    merges_filepath = r'data\merges_TinyStoriesV2.json'
+    special_tokens = ['<|endoftext|>']
+    format='local'
+    tker = Tokenizer.from_files(vocab_filepath, merges_filepath, 
+                                special_tokens=special_tokens, format=format)
+    
+
+    import numpy as np
+    max_tokens = 10_000_000_000
+    txt_filepath = r'D:\Dev\assignment1-basics\data\TinyStoriesV2-GPT4-train.txt'
+    tokens_outpath = r'data/tokens_TinyStoriesV2_train'
+    fp = np.memmap(tokens_outpath, dtype=np.uint16, mode='w+', shape=(max_tokens,))
+    current_idx = 0
+
+    with open(txt_filepath, 'r', encoding='utf-8', errors='ignore') as f:
+        tks_it = tker.encode_iterable(f)
+        for tks in tks_it:
+            tks_array = np.array(tks, dtype=np.uint16)
+            fp[current_idx : current_idx + len(tks)] = tks_array
+            current_idx += len(tks)
+
+    fp.resize(current_idx)
+    fp.flush()
+    print(f"保存完成，总 Token 数: {current_idx}")

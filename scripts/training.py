@@ -42,7 +42,8 @@ config = {
     'weight_decay': 0.01,
     'l2_max': 1,
     ## tokens id file
-    'tk_file': r""
+    'tk_train_file': r"",
+    'tk_valid_file': r""
 }
 
 config['lr_T_w'] = int(np.around(config['total_steps'] * 0.1))
@@ -50,9 +51,11 @@ config['lr_T_c'] = int(np.around(config['total_steps'] * 0.85))
 
 ## tokens id file
 if config['lazy_load']:
-    tokens = np.load(config['tk_file'], mmap_mode='r')
+    tokens_train = np.load(config['tk_train_file'], mmap_mode='r')
+    tokens_valid = np.load(config['tk_valid_file'], mmap_mode='r')
 else:
-    tokens = np.load(config['tk_file'])
+    tokens_train = np.load(config['tk_train_file'])
+    tokens_valid = np.load(config['tk_valid_file'])
 
 # initial model
 model = TransformerLM(
@@ -70,10 +73,11 @@ with wandb.init(project=project, config=config) as run:
     for it in range(config['total_steps']):
         ''''''
         #======================================================================
-        nowtime = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        start_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         #======================================================================
         ## get batch
-        sequences, targets = data_loading(tokens, config['batch_size'], config['context_length'], device=config['device'])
+        sequences, targets = data_loading(tokens_train, config['batch_size'], 
+                                          config['context_length'], device=config['device'])
         ## zero grad
         opt.zero_grad()
         ## learning rate schedule
@@ -84,15 +88,25 @@ with wandb.init(project=project, config=config) as run:
         lm_head = TransformerLM(sequences)
         ## loss
         loss = cross_entropy(lm_head, targets)
-        #======================================================================
-        wandb.log({'it':it, 'loss': loss})
-        #======================================================================
         ## backward
         loss.backward()
         ## grad clipping
         gradient_clipping(model.parameters(), config['l2_max'], eps=config['eps'])
         ## opt step
         opt.step()
+        #======================================================================
+        end_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        #======================================================================
+        # valid loss
+        seq_val, tar_val = data_loading(tokens_valid, config['batch_size'], 
+                                          config['context_length'], device=config['device'])
+        lm_head_val = TransformerLM(seq_val)
+        valid_loss = cross_entropy(lm_head_val, tar_val)
+        # print and log
+        #======================================================================
+        print(f'step:{it} from {start_time} to {end_time} training_loss={loss} valid_loss={valid_loss}')
+        wandb.log({'it':it, 'training_loss': loss, 'valid_loss': valid_loss})
+        #======================================================================
 
 #======================================================================
 wandb.finish()

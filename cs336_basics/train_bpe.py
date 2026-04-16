@@ -59,37 +59,27 @@ def get_initial_stats(vocab):
             pairs[pair] = pairs.get(pair, 0) + freq
     return pairs
 
-def update_pair_counts_incrementally(pair_counts, word_tuple, freq_delta, old_pair, new_token):
+def update_pair_counts_incrementally(pair_counts, word_tuple, new_word_tuple, freq_delta):
     """增量更新 pairs"""
     # 扫描当前单词，找到所有涉及 old_pair 的位置，并计算变化
+    word_pair_counts = {}
+    # decrease
     i = 0
     while i < len(word_tuple) - 1:
-        # 检查是否命中待合并的 old_pair
-        if word_tuple[i] == old_pair[0] and word_tuple[i+1] == old_pair[1]:
-            # --- 旧词对消失 ---
-            # 1. (old_pair[0], old_pair[1]) 消失
-            pair_counts[(old_pair[0], old_pair[1])] -= freq_delta
-            
-            # 2. 左边的邻居对 (prev, old_pair[0]) 消失
-            if i > 0:
-                pair_counts[(word_tuple[i-1], old_pair[0])] = pair_counts.get((word_tuple[i-1], old_pair[0]), 0) - freq_delta
-            
-            # 3. 右边的邻居对 (old_pair[1], next) 消失
-            if i < len(word_tuple) - 2:
-                pair_counts[(old_pair[1], word_tuple[i+2])] = pair_counts.get((old_pair[1], word_tuple[i+2]), 0) - freq_delta
-
-            # --- 新词对产生 ---
-            # 1. 新的邻居对 (prev, new_token) 产生
-            if i > 0:
-                pair_counts[(word_tuple[i-1], new_token)] = pair_counts.get((word_tuple[i-1], new_token), 0) + freq_delta
-            
-            # 2. 新的邻居对 (new_token, next) 产生
-            if i < len(word_tuple) - 2:
-                pair_counts[(new_token, word_tuple[i+2])] = pair_counts.get((new_token, word_tuple[i+2]), 0) + freq_delta
-            
-            i += 2
-        else:
-            i += 1
+        pair = (word_tuple[i], word_tuple[i+1])
+        word_pair_counts[pair] = word_pair_counts.get(pair, 0) - freq_delta
+        i += 1
+    # increase
+    i = 0
+    while i < len(new_word_tuple) - 1:
+        pair = (new_word_tuple[i], new_word_tuple[i+1])
+        word_pair_counts[pair] = word_pair_counts.get(pair, 0) + freq_delta
+        i += 1
+    # update
+    for tup, freq in word_pair_counts.items():
+        pair_counts[tup] = pair_counts.get(tup, 0) + freq
+        if pair_counts[tup] <= 0:
+            pair_counts.pop(tup, None)
 
 def build_vocab_from_merges(merges, special_tokens=[]):
     '''从merges中恢复出BPE词表'''
@@ -263,7 +253,6 @@ def to_run_train_bpe(
         # 增量更新pairs字典，统计相邻token出现的次数，同时更新total_counts
         # 想要更快的话，还要维护pairs: word_tuple 字典，用best_pair查找要更新的word_tuple
         for word_tuple, freq in total_counts.items():
-            update_pair_counts_incrementally(pairs, word_tuple, freq, best_pair, new_token)
             new_word = []
             i = 0
             while i < len(word_tuple):
@@ -275,8 +264,10 @@ def to_run_train_bpe(
                 else:
                     new_word.append(word_tuple[i])
                     i += 1
-            new_total_counts[tuple(new_word)] = freq
-        
+            new_word_tuple = tuple(new_word)
+            new_total_counts[new_word_tuple] = freq
+            if new_word_tuple != word_tuple:
+                update_pair_counts_incrementally(pairs, word_tuple, new_word_tuple, freq)
         total_counts = new_total_counts
 
     vocab = build_vocab_from_merges(merges, special_tokens)
@@ -284,9 +275,11 @@ def to_run_train_bpe(
 
 
 if __name__ == '__main__':
-    input_path = r'D:\Dev\assignment1-basics\data\TinyStoriesV2-GPT4-valid.txt'
-    vocab_size = 500
+    input_path = r'D:\Dev\assignment1-basics\data\TinyStoriesV2-GPT4-train.txt'
+    vocab_size = 10000
     special_tokens = [r'<|endoftext|>']
 
     vocab, merges = to_run_train_bpe(input_path, vocab_size, special_tokens)
-    save_tokenizer_json(vocab, merges, vocab_path="cs336_basics/bpe_vocab.json", merges_path="cs336_basics/bpe_merges.json")
+    save_tokenizer_json(vocab, merges, 
+                        vocab_path="data/vocab_TinyStoriesV2.json", 
+                        merges_path="data/merges_TinyStoriesV2.json")
