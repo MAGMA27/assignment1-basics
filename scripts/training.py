@@ -115,7 +115,7 @@ with wandb.init(project=project, config=config) as run:
         print(f'step:{it} from {start_time} to {end_time} training_loss={loss} valid_loss={valid_loss}')
         wandb.log({'it':it, 'training_loss': loss, 'valid_loss': valid_loss})
         #======================================================================
-        if (it+1) // 200 == 0:
+        if (it+1) % 200 == 0:
             output_path = f'{config['save_ckpt_path']}\\{project}_run{run_idx}_it{it}.pt'
             save_checkpoint(model, opt, it, output_path)
 
