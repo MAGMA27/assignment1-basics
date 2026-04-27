@@ -23,8 +23,19 @@ class SwiGLU(nn.Module):
         x1 = self.w1(x)
         x1 = x1 * torch.sigmoid(x1)
         x3 = self.w3(x)
-        result = self.w2(x1 * x3)
-        return result
+        return self.w2(x1 * x3)
+    
+
+class SiLU(nn.Module):
+    def __init__(self, device=None, dtype=None):
+        '''
+        '''
+        super().__init__()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        ''''''
+        return x * torch.sigmoid(x)
+    
     
 if __name__ == "__main__":
     ''''''
