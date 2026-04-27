@@ -68,20 +68,23 @@ class Tokenizer():
     def encode_iterable(self, iterable: Iterable[str], batch_size=5000) -> Iterator[int]:
         current_batch = ""
         for line in iterable:
-            current_batch += line + "\n"
+            current_batch += line
             if len(current_batch) >= batch_size:
                 ids = self.encode(current_batch)
-                yield ids
+                for id in ids:
+                    yield id
                 current_batch = ""
         if current_batch:
             ids = self.encode(current_batch)
-            yield ids
+            for id in ids:
+                yield id
 
     def decode(self, ids: list[int]) -> str:
         decode_seqs = []
         buffer = b''
         for i in range(len(ids)):
-            buffer += self.vocab[ids[i]]
+            token_id = ids[i]
+            buffer += self.vocab[token_id]
             try:
                 decode_seqs.append(buffer.decode('utf_8'))
                 buffer = b''
@@ -264,7 +267,7 @@ if __name__ == '__main__':
     # tk_path = r'D:\Dev\assignment1-basics\data\tokens_TinyStoriesV2_train.npy'
     # tks = np.fromfile(tk_path, dtype=np.uint16)
     # print(tker.decode(tks[:5000]))
-    
+
 
     max_tokens = 10_000_000_000
     txt_filepath = r'D:\Dev\assignment1-basics\data\TinyStoriesV2-GPT4-valid.txt'

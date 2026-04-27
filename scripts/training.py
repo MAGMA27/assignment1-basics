@@ -19,11 +19,11 @@ config = Namespace(
 )
 
 project ='wandb_demo'
-run_idx = 1
+run_idx = 2
 config = {
     # hyperparameters
     ## training loop
-    'total_steps': 2000,
+    'total_steps': 5000,
     'batch_size': 32,
     'device': torch.device('cuda' if torch.cuda.is_available() else 'cpu'),
     'lazy_load': False,
@@ -36,8 +36,8 @@ config = {
     'num_layers': 4,
     'num_heads': 16,
     ## optimizer
-    'lr_max': 1e-2,
-    'lr_min': 1e-5,
+    'lr_max': 5e-3,
+    'lr_min': 1e-6,
     'betas': (0.999, 0.9),
     'eps': 1e-6,
     'weight_decay': 0.01,
@@ -115,7 +115,7 @@ with wandb.init(project=project, config=config) as run:
         print(f'step:{it} from {start_time} to {end_time} training_loss={loss} valid_loss={valid_loss}')
         wandb.log({'it':it, 'training_loss': loss, 'valid_loss': valid_loss})
         #======================================================================
-        if (it+1) % 200 == 0:
+        if (it+1) % 500 == 0:
             output_path = f'{config['save_ckpt_path']}\\{project}_run{run_idx}_it{it}.pt'
             save_checkpoint(model, opt, it, output_path)
 
