@@ -3,7 +3,9 @@ import torch
 
 
 def data_loading(x: np.array, batch_size: int, context_length: int, device=None) -> tuple[torch.Tensor, torch.Tensor]:
-    ''''''
+    '''
+    split the dataset to sequence and target
+    '''
     seq = torch.from_numpy(x[:-1]).to(device=device).int()
     target = torch.from_numpy(x[1:]).to(device=device).int()
 
