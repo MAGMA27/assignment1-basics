@@ -20,6 +20,8 @@ def gradient_clipping(params_lst: Iterable, l2_max: float, eps: torch.Tensor=1e-
                 factor = l2_max / (l2_p + eps)
                 params.grad.data.mul_(factor)
 
+    return l2_p
+
 
 if __name__ == "__main__":
     ''''''

@@ -53,7 +53,11 @@ def main(rank, project, config, world_size):
         config['vocab_size'], config['context_length'], config['num_layers'], config['d_model'],
         config['num_heads'], config['d_ff'], config['rope_theta'], device=device
     )
-
+    if config['load_ckpt_path'] != '':
+        it_loaded = load_checkpoint(config['load_ckpt_path'], model, opt)
+        print(f'it = {it_loaded}')
+    else:
+        it_loaded = 0
     model = model.to(device)
 
     # initial optimizer
@@ -78,7 +82,8 @@ def main(rank, project, config, world_size):
     # training loop implementation
     for epoch in range(100):
         sampler.set_epoch(epoch)
-        for it, (sequences, targets) in dataloader:
+        for it, (sequences, targets) in enumerate(dataloader):
+            it += it_loaded
             ''''''
             sequences, targets = sequences.to(device), targets.to(device)
             #======================================================================
@@ -97,7 +102,7 @@ def main(rank, project, config, world_size):
             ## backward
             loss.backward()
             ## grad clipping
-            gradient_clipping(model.parameters(), config['l2_max'], eps=config['eps'])
+            l2p = gradient_clipping(model.parameters(), config['l2_max'], eps=config['eps'])
             ## opt step
             opt.step()
             #======================================================================
@@ -111,11 +116,13 @@ def main(rank, project, config, world_size):
             # print and log
             #======================================================================
             if rank == 0:
-                print(f'step:{it} from {start_time} to {end_time} training_loss={loss} valid_loss={valid_loss}')
-                wandb.log({'it':it, 'training_loss': loss, 'valid_loss': valid_loss})
+                print(f'step:{it} from {start_time} to {end_time} training_loss={loss} valid_loss={valid_loss}, learning_rate={lr}, l2p={l2p}')
+                wandb.log({'it':it, 'training_loss': loss, 'valid_loss': valid_loss, 'learning_rate': lr, 'l2p': l2p})
             #======================================================================
-                if (it+1) % 500 == 0:
-                    output_path = f'{config['save_ckpt_path']}\\{project}_run{run_idx}_it{it}.pt'
+                if (it+1) % 2500 == 0:
+                    out_dir = f'{config['save_ckpt_path']}_run{config['run_idx']}'
+                    os.makedirs(out_dir, exist_ok=True)
+                    output_path = f'{out_dir}//{project}_run{config['run_idx']}_it{it}.pt'
                     save_checkpoint(model, opt, it, output_path)
             
             if it >= config['total_steps']:
@@ -139,12 +146,11 @@ if __name__ == '__main__':
     )
 
     project ='ddp-single-node-demo'
-    global run_idx
     run_idx = 2
     config = {
         # hyperparameters
         ## training loop
-        'total_steps': 5000,
+        'total_steps': 50000,
         'batch_size': 32,
         'lazy_load': False,
         ## model
@@ -156,18 +162,20 @@ if __name__ == '__main__':
         'num_layers': 4,
         'num_heads': 16,
         ## optimizer
-        'lr_max': 5e-3,
+        'lr_max': 1e-3,
         'lr_min': 1e-6,
-        'betas': (0.999, 0.9),
+        'betas': (0.9, 0.999),
         'eps': 1e-6,
         'weight_decay': 0.01,
-        'l2_max': 1,
+        'l2_max': 5,
         ## tokens id file
-        'tk_train_file': r".\data\tokens_TinyStoriesV2_train.npy",
-        'tk_valid_file': r".\data\tokens_TinyStoriesV2_valid.npy",
+        'tk_train_file': r"data/tokens_TinyStoriesV2_train.npy",
+        'tk_valid_file': r"data/tokens_TinyStoriesV2_valid.npy",
         ## checkpoint
         'load_ckpt_path': r'',
-        'save_ckpt_path': r'check_points'
+        'save_ckpt_path': r'check_points',
+        ## run idx
+        'run_idx': run_idx
     }
 
     config['lr_T_w'] = int(np.around(config['total_steps'] * 0.1))
