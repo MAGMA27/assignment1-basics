@@ -42,15 +42,15 @@ class MultiheadSelfAttentionRoPE(nn.Module):
         K = self.K(x)
         V = self.V(x)
         
-        Q = rearrange(Q, "... sq_l (h d) -> h ... sq_l d", h=self.h)
-        K = rearrange(K, "... sq_l (h d) -> h ... sq_l d", h=self.h)
-        V = rearrange(V, "... sq_l (h d) -> h ... sq_l d", h=self.h)
+        Q = rearrange(Q, "... sq_l (h d) -> ... h sq_l d", h=self.h)
+        K = rearrange(K, "... sq_l (h d) -> ... h sq_l d", h=self.h)
+        V = rearrange(V, "... sq_l (h d) -> ... h sq_l d", h=self.h)
 
         Q = self.rope(Q, token_positions=token_positions)
         K = self.rope(K, token_positions=token_positions)
 
         attention = scaled_dot_product_attention(Q, K, V, mask=causal_mask)
-        attention = rearrange(attention, "h ... sq_l d -> ... sq_l (h d)", h=self.h)
+        attention = rearrange(attention, "... h sq_l d -> ... sq_l (h d)", h=self.h)
         output = self.O(attention)
 
         return output

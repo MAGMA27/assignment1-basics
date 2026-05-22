@@ -1,3 +1,7 @@
+# 个人实现的CS336 assignment1
+在/scripts文件夹中还实现了training loop，DDP训练，生成等功能
+额外梳理了一份[Transformer语言模型架构和细节梳理](./Transformer语言模型架构和细节梳理.md)笔记，个人学习笔记，请谨慎参考，如有错误欢迎指出。
+
 # CS336 Spring 2025 Assignment 1: Basics
 
 For a full description of the assignment, see the assignment handout at
